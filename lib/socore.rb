@@ -1,13 +1,6 @@
 #!/usr/bin/env ruby
 
 class Socore
-  def update_cookbook
-    # check if cookbook exists, if not check it out
-
-    # if so do a git pull (with force?)
-  end
-
-
   def read_config(file_name)
     $cookbooks = {}
     config_file = file_name
@@ -55,18 +48,28 @@ class Socore
     end
   end
 
-  def install_cookbook
-
+  def install_cookbook(name, uri)
+    `cd .. && rm -rf ./#{name} && git clone #{uri} ./#{name}`
   end
 
-  def update_lockfile
-
+  def update_lockfile(lock_file, name, git_cur_sha, dir_cur_hash)
+    locks = read_lockfile(lock_file)
+    locks[name.to_s] = { :git_sha => git_current_sha.to_s, :dir_hash => dir_cur_hash.to_s }
+    # write locks to file converting to locks format
+    file = File.open(lock_file, 'w')
+    file.truncate(file.size)
+    locks.each do |cookbook, data|
+      file.write("cookbook '#{cookbook}', :git_sha => '#{data[:git_sha]}', :dir_hash => '#{data[:dir_hash]}'")
+    end
+    file.close()
   end
 
   def socore
     debug = true
-    cookbooks = read_config("socore.conf")
-    locks = read_lockfile("socore.lock")
+    lock_file = "socore.lock"
+    config_file = "socore.conf"
+    cookbooks = read_config(config_file)
+    locks = read_lockfile(lock_file)
     hashes = get_dir_hashes(cookbooks)
     $updated_cookbooks = {}
 
@@ -83,15 +86,15 @@ class Socore
       if debug then puts "Cookbook: #{name}, URI: #{uri}" end
 
       # Check lockfile for currently pulled hash
-      git_lock_hash, dir_lock_hash = locks[name.to_s]
-      git_cur_hash, dir_cur_hash = hashes[name.to_s]
+      git_lock_sha, dir_lock_hash = locks[name.to_s]
+      git_cur_sha, dir_cur_hash = hashes[name.to_s]
 
-      if git_lock_hash.nil? || git_cur_hash.nil? || dir_lock_hash.nil? || dir_cur_hash.nil?
+      if git_lock_sha.nil? || git_cur_sha.nil? || dir_lock_hash.nil? || dir_cur_hash.nil?
         # if no hash - have git download the repository over the existing one
         puts "#{name} has no metadata, installing a fresh copy..."
         install_cookbook(name, uri)
-        update_lockfile(name, git_cur_hash, dir_cur_hash)
-        $updated_cookbooks[name] = {"git_sha" => git_cur_hash.to_s, "dir_hash" => dir_cur_hash.to_s}
+        update_lockfile(lock_file, name, git_cur_sha, dir_cur_hash)
+        $updated_cookbooks[name] = {"git_sha" => git_cur_sha.to_s, "dir_hash" => dir_cur_hash.to_s}
           # add new sha and git repo name to changed hash
       elsif git_lock_hash == git_cur_hash && dir_lock_hash == dir_cur_hash
         # if hash - compare to git.has file in dir & compare directories hash to git hash to make sure it has not changed locally either
