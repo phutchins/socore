@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 class Socore
-  $debug = true
+  $debug = false
   def read_config(file_name)
     $cookbooks = {}
     config_file = file_name
@@ -44,17 +44,27 @@ class Socore
     pwd = `pwd`.chomp
     #puts "DEBUG - Getting hash for '#{cookbook}' cookbook" if $debug
 
-    $cookbook_dir = File.join(pwd, cookbook).to_s
+    $cookbook_dir = File.join(pwd, cookbook)
     $directories = []
     puts "DEBUG - get_dir_hash - Looking for all files in #{$cookbook_dir}" if $debug
     begin
-      Find.find($cookbook_dir) { |e| $directories << e if File.directory?(e) }
+      Find.find($cookbook_dir) do |path|
+        if FileTest.directory?(path)
+          if File.basename(path) == '../' || File.basename(path) == './' || File.basename(path) == '.git'
+            Find.prune
+          else
+            $directories << path
+            puts path if $debug
+            next
+          end
+        end
+      end
       # sort the array
       $directories.sort!
       ls_glob = ""
       # run an ls on each of those directories and append the output to a string
       $directories.each do |dir|
-        ls_glob += `ls -altr #{dir}`
+        ls_glob += `ls -Altr #{dir}`
       end
       puts "DEBUG - get_dir_hash - [#{cookbook}] ls_glob.length: #{ls_glob.length}" if $debug
       # get the hash of that string
@@ -148,7 +158,7 @@ class Socore
       elsif lock_git_sha == cur_git_sha && lock_dir_hash == cur_dir_hash
         # if hash - compare to git.has file in dir & compare directories hash to git hash to make sure it has not changed locally either
         # if hashes are the same - do nothing
-        puts "#{name} is up to date"
+        puts "#{name} is up to date" if $debug
       else
         # else - have git download the repo, create the git.hash file, write the git hash and directory sha to the pull.lock
         puts "#{name} needs an update..."
@@ -158,28 +168,12 @@ class Socore
         $updated_cookbooks[name] = {"git_hash" => cur_git_sha.to_s, "dir_hash" => cur_dir_hash.to_s}
           # add new sha and git repo name to changed hash
       end
-
-      if !$updated_cookbooks.empty?
-        puts "Cookbooks upcated..."
-
-      end
+    end
+    if !$updated_cookbooks.empty?
       # if changed - commit all changes and push using changed hash as comment
+      puts "Cookbooks updated..."
     end
     puts "Done..."
-
-   # def run
-   #   pull_output = `cd ../#{name} ; git pull`
-   #   if debug then puts "DEBUG: #{pull_output}" end
-   #   return_code = $?.to_i
-   #   puts "Return Code: #{return_code}"
-   #   if !return_code == 0
-   #     checkout_output = `cd ../ ; git checkout #{uri}`
-   #     if debug then puts "DEBUG: #{checkout_output}" end
-   #     puts "Checked out #{name}"
-   #   else
-   #     puts "Updated #{name}"
-   #   end
-   # end
   end
 end
 
