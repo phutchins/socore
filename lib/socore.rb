@@ -2,11 +2,14 @@
 
 class Socore
   $debug = false
-  def read_config(file_name)
+  $pwd = Dir.pwd
+  $lock_file = "socore.lock"
+  $config_file = "socore.conf"
+
+  def read_config(config_file)
     $cookbooks = {}
-    config_file = file_name
-    puts "Config: #{File.join(File.dirname(__FILE__), config_file)}"
-    File.readlines(File.join(File.dirname(__FILE__), config_file)).each do |line|
+    puts "Config: #{File.join($pwd, config_file)}"
+    File.readlines(File.join($pwd, config_file)).each do |line|
       #puts "DEBUG - read_config - Line: #{line}" if $debug
       line.gsub!("\n", "")
       regex_result = line.match(/(\w+)?cookbook '([-\w]+)', :git => '([^']*)'/)
@@ -19,11 +22,10 @@ class Socore
     $cookbooks
   end
 
-  def read_lockfile(file_name)
-    lock_file = file_name
+  def read_lockfile(lock_file)
     $locks = {}
     begin
-      File.readlines(File.join(File.dirname(__FILE__), lock_file)).each do |line|
+      File.readlines(File.join($pwd, lock_file)).each do |line|
         line.gsub!("\n", "")
         regex_result = line.match(/(\w+)?cookbook '([-\w]+)', :git_sha => '([^']*)', :dir_hash => '([^']*)'/)
         $locks[regex_result[2].to_s] = { :git_sha => regex_result[3].to_s, :dir_hash => regex_result[4].to_s }
@@ -41,10 +43,9 @@ class Socore
     #puts "DEBUG - get_dir_hash - cookbooks: #{cookbooks.inspect}" if $debug
     #puts "  - get_dir_hash -" if $debug
     # Find all directories in cookbook folder and add to an array
-    pwd = `pwd`.chomp
     #puts "DEBUG - Getting hash for '#{cookbook}' cookbook" if $debug
 
-    $cookbook_dir = File.join(pwd, cookbook)
+    $cookbook_dir = File.join($pwd, cookbook)
     $directories = []
     puts "DEBUG - get_dir_hash - Looking for all files in #{$cookbook_dir}" if $debug
     begin
@@ -71,7 +72,7 @@ class Socore
       $cookbook_hash = Digest::MD5.hexdigest ls_glob
       # return the hash
     rescue Exception => e
-      puts "No cookbooks found."
+      puts "Cookbook '#{cookbook}' does not yet exist."
       puts "EXCEPTION: #{e.backtrace}" if $debug
     end
     puts "DEBUG - get_dir_hash - returning $hashes: #{$cookbook_hash.inspect}" if $debug
@@ -79,14 +80,27 @@ class Socore
   end
 
   def install_cookbook(name, uri)
-    `rm -rf ./#{name} && git clone #{uri} #{name}`
+    output = `rm -rf ./#{name} && git clone #{uri} #{name} >/dev/null 2>&1`
     git_sha = `cd ./#{name} && git rev-parse HEAD`.chomp
+    output = `rm -rf ./#{name}/.git`
     git_sha
   end
 
-  def get_git_sha(name)
-    git_sha = `cd ./#{name} && git rev-parse HEAD`.chomp
+  def get_git_remote_sha(remote, branch_or_tag)
+    git_sha = nil
+    #if FileTest.directory?("./#{name}")
+    #  git_sha = `cd ./#{name} && git rev-parse HEAD`.chomp
+    #end
+    git_sha = `git ls-remote #{remote} #{branch_or_tag}`.split(%r{\t})[0]
     git_sha
+  end
+
+  def commit_changes(updated_cookbooks)
+    changed_string = ""
+    updated_cookbooks.each { |entry| changed_string << "#{entry.to_s}, " }
+    changed_string.chomp!
+    results = `git add . --all && git commit -m "SOCORE - Commiting changed cookbooks" && git push >/dev/null 2>&1`
+    results
   end
 
   def update_lockfile(lock_file, name, cur_git_sha, cur_dir_hash)
@@ -97,21 +111,21 @@ class Socore
     end if $debug
     locks[name.to_s] = { :git_sha => cur_git_sha.to_s, :dir_hash => cur_dir_hash.to_s }
     # write locks to file converting to locks format
-    puts "update_lockfile - LockFile: #{lock_file}" if $debug
+    puts "  - WRITE LOCKFILE - LockFile: #{lock_file}" if $debug
 
-    file = File.open(File.join(File.dirname(__FILE__), lock_file), 'w')
+    file = File.open(File.join($pwd, lock_file), 'w')
     file.truncate(file.size)
     locks.each do |cookbook, data|
+      puts "  - LOCK: Cookbook: #{cookbook}, Data: #{data}" if $debug
       file.write("cookbook '#{cookbook}', :git_sha => '#{data[:git_sha]}', :dir_hash => '#{data[:dir_hash]}'\n")
+
     end
     file.close()
   end
 
   def socore
-    lock_file = "socore.lock"
-    config_file = "socore.conf"
-    cookbooks = read_config(config_file)
-    locks = read_lockfile(lock_file)
+    cookbooks = read_config($config_file)
+    locks = read_lockfile($lock_file)
     $updated_cookbooks = {}
 
     if $debug
@@ -127,12 +141,22 @@ class Socore
       puts " - Processing cookbook '#{name}', URI: #{uri}"
 
       # Check lockfile for currently pulled hash
+      puts "Getting lock data..." if $debug
       lock_data = locks[name.to_s] || nil
+      tag_or_branch = tag_or_branch || "HEAD"
 
-      lock_git_sha = lock_data[:git_sha]
-      cur_git_sha = get_git_sha(name)
+      puts "Getting lock_git_sha..." if $debug
+      lock_git_sha = lock_data[:git_sha] if !lock_data.nil?
 
-      lock_dir_hash = lock_data[:dir_hash]
+      # TODO - Compare remote SHA to lock file SHA.
+      #        if same - compare dir hashes
+      #        if different - update local copy
+      puts "Getting cur_git_remote_sha..." if $debug
+      cur_git_remote_sha = get_git_remote_sha(uri, tag_or_branch)
+
+      puts "Getting lock_dir_hash..." if $debug
+      lock_dir_hash = lock_data[:dir_hash] if !lock_data.nil?
+      puts "Getting cur_dir_hash..." if $debug
       cur_dir_hash = get_dir_hash(name) || nil
       puts "DEBUG - inspect cur_dir_hash: [#{name}] #{cur_dir_hash.inspect}" if $debug
 
@@ -140,7 +164,7 @@ class Socore
       # cur_git_sha = install_cookbook(name, uri)
 
       puts "-DEBUG - lock_git_sha: #{lock_git_sha}" unless lock_git_sha.nil? if $debug
-      puts "-DEBUG - cur_git_sha: #{cur_git_sha} " unless cur_git_sha.nil? if $debug
+      puts "-DEBUG - cur_git_remote_sha: #{cur_git_remote_sha} " unless cur_git_remote_sha.nil? if $debug
       puts "-DEBUG - lock_dir_hash: #{lock_dir_hash}" unless lock_dir_hash.nil? if $debug
       puts "-DEBUG - cur_dir_hash: #{cur_dir_hash}" unless cur_dir_hash.nil? if $debug
       if lock_git_sha.nil? || lock_dir_hash.nil?
@@ -148,14 +172,18 @@ class Socore
         puts "#{name} has no metadata, installing a fresh copy..."
         # Clone the cookbook repository and get the current sha
         # FIX
-        cur_dir_hash = get_dir_hash(name)
+        # TODO !!!!!
+        # implement a check to see if the remote is the same but local has changed and ask user if they want to blow away local changes!!!!
+        # !!!!!
         cur_git_sha = install_cookbook(name, uri)
+        cur_dir_hash = get_dir_hash(name)
         # Need to update cur_git_sha and cur_dir_hash here
         puts "DEBUG - Updating LOCK file with - Cookbook: #{name}, cur_git_sha: #{cur_git_sha}, cur_dir_hash: #{cur_dir_hash}" if $debug
-        update_lockfile(lock_file, name, cur_git_sha, cur_dir_hash)
+        update_lockfile($lock_file, name, cur_git_sha, cur_dir_hash)
         $updated_cookbooks[name] = {"git_sha" => cur_git_sha.to_s, "dir_hash" => cur_dir_hash.to_s}
           # add new sha and git repo name to changed hash
-      elsif lock_git_sha == cur_git_sha && lock_dir_hash == cur_dir_hash
+      elsif lock_dir_hash == cur_dir_hash && lock_data[:git_sha] == cur_git_remote_sha
+      #elsif lock_git_sha == cur_git_sha && lock_dir_hash == cur_dir_hash
         # if hash - compare to git.has file in dir & compare directories hash to git hash to make sure it has not changed locally either
         # if hashes are the same - do nothing
         puts "#{name} is up to date" if $debug
@@ -164,7 +192,8 @@ class Socore
         puts "#{name} needs an update..."
         cur_git_sha = install_cookbook(name, uri)
         cur_dir_hash = get_dir_hash(name)
-        update_lockfile(lock_file, name, cur_git_sha, cur_dir_hash)
+        puts "DEBUG - Current GIT SHA: #{cur_git_sha}" if $debug
+        update_lockfile($lock_file, name, cur_git_sha, cur_dir_hash)
         $updated_cookbooks[name] = {"git_hash" => cur_git_sha.to_s, "dir_hash" => cur_dir_hash.to_s}
           # add new sha and git repo name to changed hash
       end
@@ -172,6 +201,7 @@ class Socore
     if !$updated_cookbooks.empty?
       # if changed - commit all changes and push using changed hash as comment
       puts "Cookbooks updated..."
+      commit_changes($updated_cookbooks)
     end
     puts "Done..."
   end
