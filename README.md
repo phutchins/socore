@@ -1,4 +1,4 @@
-socore - Solo or zerO COokbook REpo manager
+socore - Solo or zerO COokbook REpo
 ======
 
 Description
@@ -11,12 +11,14 @@ SOCORE uses a config file, socore.conf to determine which cookbooks to manage. I
 Installation
 ============
 
+```
 gem install socore
+```
 
 Usage
 =====
 
-Create the config file, socore.conf, in the root of your repository.
+Create the config file, `socore.conf`, in the root of your repository.
 
 Example config file...
 
@@ -29,6 +31,7 @@ Run `socore` in the root of your repository.
 Sample
 ======
 
+Sample run...
 ```
 $ socore
 Config: /Users/phutchins/github/opsworks-master/socore.conf
@@ -38,4 +41,11 @@ Config: /Users/phutchins/github/opsworks-master/socore.conf
  - Processing cookbook 'logstash', URI: git@github.com:phutchins/chef-logstash.git
 Cookbooks updated...
 Done...
+```
+
+Resulting lock file `socore.lock` ...
+```
+cookbook 'base-cookbook', :git_sha => '29403bae6ee12570a108c31f7a1251745d8b9a26', :dir_hash => 'f2ecef31a58893417f34b9db78788bac'
+cookbook 'abcd-chef', :git_sha => '088978e75a867e1cf196cabfd0b87b7eec0a8d9f', :dir_hash => 'faab05547892365d55eec96fc6003de4'
+cookbook 'logstash', :git_sha => '6d1025df1202da833ecf2e83b45a2056697047a7', :dir_hash => 'bc88db6b79b2824660a78b6bdc68a403'
 ```
