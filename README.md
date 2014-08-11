@@ -49,3 +49,8 @@ cookbook 'base-cookbook', :git_sha => '29403bae6ee12570a108c31f7a1251745d8b9a26'
 cookbook 'abcd-chef', :git_sha => '088978e75a867e1cf196cabfd0b87b7eec0a8d9f', :dir_hash => 'faab05547892365d55eec96fc6003de4'
 cookbook 'logstash', :git_sha => '6d1025df1202da833ecf2e83b45a2056697047a7', :dir_hash => 'bc88db6b79b2824660a78b6bdc68a403'
 ```
+
+TODO
+====
+
+- Add ability to pin version numbers of cookbooks via repository tag name
