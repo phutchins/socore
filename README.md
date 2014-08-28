@@ -54,3 +54,9 @@ TODO
 ====
 
 - Add ability to pin version numbers of cookbooks via repository tag name
+
+### License
+
+socore is released under the Apache 2.0 license. See the [LICENSE](LICENSE) file for details.
+
+Specific components of fleet use code derivative from software distributed under other licenses; in those cases the appropriate licenses are stipulated alongside the code.
